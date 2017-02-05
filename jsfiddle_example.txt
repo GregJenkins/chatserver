@@ -1,0 +1,143 @@
+<div>
+<textarea rows=5 style="width: 400px" id="messageArea"></textarea>
+<br>
+<input id="messageInput" style="height: 15px;">
+<a href="#" onClick="sendHandler();">Send</a>
+</div> 
+
+
+
+var currentPlayer = null; 
+
+if (!currentPlayer) {
+  	currentPlayer = new player(); 
+    currentPlayer.connect(); 
+}
+  
+this.sendHandler = function() {  
+  currentPlayer.send(); 
+}
+function player () {
+  var self = this; 
+  self.connection = null;
+  self.useConnect = false;
+  self.guid = getGuid(); 
+  self.textArea = document.getElementById('messageArea');
+  self.input = document.getElementById('messageInput'); 
+  
+  self.displayMessage = function (msg) {
+  	var text = self.textArea.value; 
+    text = text + '\n' + msg;
+    self.textArea.value = text; 
+  };
+  
+  self.connect = function (wsurl) {
+        if (typeof wsurl === 'undefined') { 
+            wsurl = 'ws://localhost:3000';
+        }
+        var sep = '+'; 
+        if (wsurl.indexOf('?') < 0) {
+             sep = '?';
+        }
+        wsurl = wsurl + sep + 'guid=' + self.guid;
+        if (self.connection !== null) {
+            self.connection.close(false); 
+        }
+        self.connection = connection(wsurl);
+        self.displayMessage('Connecting to a player...');
+        self.connection.send({op:'findPlayer'});
+        return self.connection; 
+    };
+  
+  function getGuid () { 
+    function s4() {
+      return Math.floor((1 + Math.random()) * 0x10000)
+        .toString(16)
+        .substring(1);
+    }
+    return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
+      s4() + '-' + s4() + s4() + s4();
+  }
+  
+  self.send = function() {
+  		var text = self.input.value;
+      self.connection.send({op: 'msg', text: text});
+  };
+  
+  function connection(websocketUrl) {
+    self.useConnect = true; 
+    var me = {};
+    var listeners = [];
+    var oneListeners = [];
+
+    me.isConnected = false;
+
+    var queuedMessages = [];
+
+    var onopen = function () {
+      self.displayMessage('connection open'); 
+      me.isConnected = true;
+      if (queuedMessages) {
+        for (var i = 0; i < queuedMessages.length; i++) {
+          ws.send(JSON.stringify(queuedMessages[i]));
+        }
+        queuedMessages = null;
+      }
+    };
+
+    var onclose = function () {
+      self.displayMessage('connection lost'); 
+      me.isConnected = false; 
+    };
+
+    var onmessage = function (msg) {
+      var obj = JSON.parse(msg.data);
+      switch (obj.op) {
+        case 'start': 
+          self.displayMessage('start chat');
+          break;
+        case 'msg': 
+        	var text = obj.error ? obj.reason : obj.text; 
+          if (text) {
+          	self.displayMessage(text);
+          }
+          break; 
+       } 
+    };
+
+    var onerror = function () {
+      console.log('onerror');
+    };
+
+    me.send = function (obj) {          
+      if (queuedMessages)
+        queuedMessages.push(obj);
+      else
+        ws.send(JSON.stringify(obj));
+    }
+
+    me.close = function(reload) { 
+      ws.close(); 
+      self.useConnect = false; 
+      self.reloadBoardGame = reload; 
+    }; 
+
+    var setHandlers = function (w) {
+      w.onopen = onopen;
+      w.onclose = onclose;
+      w.onmessage = onmessage;
+      w.onerror = onerror;
+    };
+
+    var connect = function () {
+      console.log('connecting...');
+      var w = new WebSocket(websocketUrl);
+      setHandlers(w);
+      return w;
+    }
+
+    var ws = connect();
+
+    return me;
+  };
+}
